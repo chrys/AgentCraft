@@ -1,1 +1,6 @@
-agent-skills/*
+node_modules/
+sync-state.txt
+test-dest/
+
+# Synced local cache repositories
+repos/

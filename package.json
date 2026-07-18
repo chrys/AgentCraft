@@ -1,0 +1,12 @@
+{
+  "name": "specs-kit-dashboard",
+  "version": "1.0.0",
+  "description": "HTMX Dashboard for Specs Kit",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

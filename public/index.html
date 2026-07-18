@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Specs Kit — Agent Skills Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.1"></script>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <span class="logo-icon">🚀</span>
+        <div class="logo-text">
+          <h1>Specs Kit</h1>
+          <p>AI Agent Skills Provisioner & Manager</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-primary" 
+                hx-post="/api/sync" 
+                hx-target="#console-container" 
+                hx-indicator="#sync-indicator"
+                hx-on::after-request="refreshSkills()">
+          <span class="btn-icon">🔄</span> Sync Repositories
+        </button>
+        <span id="sync-indicator" class="htmx-indicator loader"></span>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" id="btn-tab-config" onclick="switchTab('config')">
+        <span class="tab-icon">⚙️</span> Repositories Configuration
+      </button>
+      <button class="tab-btn" id="btn-tab-provision" onclick="switchTab('provision')">
+        <span class="tab-icon">🛠️</span> Skills
+      </button>
+    </div>
+
+    <!-- Main Content Panels -->
+    <main class="app-main">
+      
+      <!-- Tab 1: Repositories Configuration -->
+      <section id="tab-config" class="tab-panel active">
+        <div class="card glass">
+          <div class="card-header">
+            <h2>Active Repositories</h2>
+            <p>Git sources holding the agent skill definitions</p>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Path</th>
+                  <th>Repository URL</th>
+                  <th>Branch</th>
+                  <th>Skills Folder</th>
+                  <th>Last Synced</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="sources-list-body" hx-get="/api/sources" hx-trigger="load">
+                <!-- Loaded dynamically by HTMX -->
+                <tr>
+                  <td colspan="7" class="text-center">Loading sources...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card glass add-repo-card">
+          <div class="card-header">
+            <h2>Add Repository Source</h2>
+            <p>Declare a new Git repository source for skills</p>
+          </div>
+          <form hx-post="/api/sources" 
+                hx-target="#sources-list-body" 
+                hx-on::after-request="this.reset(); refreshSkills();"
+                class="form-grid">
+            <div class="form-group">
+              <label for="repo-name">Unique Name</label>
+              <input type="text" id="repo-name" name="name" placeholder="e.g. custom-skills" required>
+            </div>
+            <div class="form-group">
+              <label for="repo-path">Local Path (relative to root)</label>
+              <input type="text" id="repo-path" name="path" placeholder="e.g. custom-skills" required>
+            </div>
+            <div class="form-group col-span-2">
+              <label for="repo-url">Git Repository URL</label>
+              <input type="url" id="repo-url" name="url" placeholder="https://github.com/.../skills.git" required>
+            </div>
+            <div class="form-group">
+              <label for="repo-branch">Branch</label>
+              <input type="text" id="repo-branch" name="branch" value="main" required>
+            </div>
+            <div class="form-group">
+              <label for="repo-skills-path">Skills Subfolder</label>
+              <input type="text" id="repo-skills-path" name="skillsPath" value="skills" required>
+            </div>
+            <div class="form-actions col-span-2">
+              <button type="submit" class="btn btn-secondary">
+                <span class="btn-icon">➕</span> Add Source
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Tab 2: Skills -->
+      <section id="tab-provision" class="tab-panel">
+        <form hx-post="/api/provision" 
+              hx-target="#console-container" 
+              hx-indicator="#provision-indicator"
+              hx-on::after-request="refreshSkills()">
+          
+          <!-- Top Section: Side-by-Side Configuration -->
+          <div class="grid-2-cols">
+            <!-- Left Card: Options -->
+            <div class="card glass">
+              <div class="card-header">
+                <h2>1. Options</h2>
+                <p>Configure destination directory and tool format</p>
+              </div>
+              <div class="provision-settings">
+                <div class="form-group">
+                  <label for="target-path">Target Project Path (Full Path)</label>
+                  <div class="path-input-row">
+                    <input type="text" id="target-path" name="targetPath" placeholder="e.g. /Users/chrys/Projects/my-web-app" required style="flex: 1;">
+                    <button type="button" class="btn btn-secondary"
+                            hx-get="/api/skills"
+                            hx-target="#skills-card-container"
+                            hx-include="[name='targetPath'], [name='tool']"
+                            hx-indicator="#discover-indicator">
+                      🔍 Discover Skills
+                    </button>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.25rem;">
+                    <span id="discover-indicator" class="htmx-indicator loader"></span>
+                  </div>
+                </div>
+                
+                <div class="form-group">
+                  <label>Target Tool / IDE Style</label>
+                  <div class="tool-cards">
+                    <label class="tool-card-label">
+                      <input type="radio" name="tool" value="github-copilot" checked onchange="refreshSkills()">
+                      <div class="tool-card">
+                        <span class="tool-icon">🤖</span>
+                        <span class="tool-name">GitHub Copilot</span>
+                        <span class="tool-desc">Copies to <code>.github/skills/</code></span>
+                      </div>
+                    </label>
+
+                    <label class="tool-card-label">
+                      <input type="radio" name="tool" value="opencode" onchange="refreshSkills()">
+                      <div class="tool-card">
+                        <span class="tool-icon">📂</span>
+                        <span class="tool-name">OpenCode</span>
+                        <span class="tool-desc">Copies to <code>skills/</code></span>
+                      </div>
+                    </label>
+
+                    <label class="tool-card-label">
+                      <input type="radio" name="tool" value="antigravity-ide" onchange="refreshSkills()">
+                      <div class="tool-card">
+                        <span class="tool-icon">🌌</span>
+                        <span class="tool-name">Antigravity IDE</span>
+                        <span class="tool-desc">Copies to <code>.agents/</code> & writes workflows</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Card: Skills container (initially shows placeholder) -->
+            <div class="card glass skills-selection-card" id="skills-card-container">
+              <div class="card-header">
+                <h2>2. Skills</h2>
+                <p>Please enter a target path and click Discover Skills to load the list.</p>
+              </div>
+              <div class="skills-placeholder-body text-center py-4">
+                <span style="font-size: 3rem; opacity: 0.5;">🔍</span>
+                <p style="margin-top: 1rem; color: var(--text-secondary);">Enter a project path and click "Discover Skills" to query installed and available skills.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Section: Execution Console -->
+          <div class="card glass console-card full-width-console">
+            <div class="card-header">
+              <h2>Execution Console</h2>
+              <p>Live execution log output</p>
+            </div>
+            <div class="console-wrapper">
+              <div class="console-indicator-box">
+                <span id="provision-indicator" class="htmx-indicator loader">Running script...</span>
+              </div>
+              <div id="console-container" class="console-output">
+                <div class="console-placeholder">
+                  <span class="console-placeholder-icon">💻</span>
+                  <p>Trigger an action (Sync or Apply) to view terminal output</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // Tab switching logic
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-panel').forEach(panel => {
+        panel.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      document.getElementById('tab-' + tabId).classList.add('active');
+      document.getElementById('btn-tab-' + tabId).classList.add('active');
+    }
+
+    // Refresh skills panel
+    function refreshSkills() {
+      const targetPath = document.getElementById('target-path').value;
+      const toolEl = document.querySelector('input[name="tool"]:checked');
+      const tool = toolEl ? toolEl.value : '';
+      if (targetPath) {
+        htmx.ajax('GET', `/api/skills?targetPath=${encodeURIComponent(targetPath)}&tool=${encodeURIComponent(tool)}`, {target: '#skills-card-container'});
+      }
+    }
+
+    // Switch sub-tabs in skills section
+    function switchSubTab(subTabId) {
+      document.querySelectorAll('.subtab-panel').forEach(panel => {
+        panel.classList.remove('active');
+      });
+      document.querySelectorAll('.subtab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      document.getElementById('subtab-' + subTabId).classList.add('active');
+      document.getElementById('btn-subtab-' + subTabId).classList.add('active');
+    }
+
+    // Select/Deselect all checkboxes
+    function selectAllSkills(select) {
+      const checkboxes = document.querySelectorAll('.skill-checkbox');
+      checkboxes.forEach(cb => {
+        cb.checked = select;
+      });
+    }
+  </script>
+</body>
+</html>

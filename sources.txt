@@ -1,0 +1,6 @@
+# Configuration file for Agent Skills Source Repositories
+# Format: name | path | url | branch | skills_relative_path
+# Lines starting with # are comments. Empty lines are ignored.
+
+agent-skills | agent-skills | https://github.com/addyosmani/agent-skills.git | main | skills
+matt pocock skills | mattpocock | https://github.com/mattpocock/skills | main | skills
