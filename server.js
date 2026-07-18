@@ -506,5 +506,5 @@ app.post('/api/provision', (req, res) => {
 
 // Start Server
 app.listen(PORT, () => {
-  console.log(`Specs Kit Dashboard running on http://localhost:${PORT}`);
+  console.log(`AgentCraft Dashboard running on http://localhost:${PORT}`);
 });

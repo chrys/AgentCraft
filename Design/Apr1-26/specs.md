@@ -1,6 +1,6 @@
 # Initial BRD
 
-- This project is under `Projects/Specs_kit` and will be used to define the agent skills for all other projects. It will use the agent skills of this repository: https://github.com/addyosmani/agent-skills
+- This project is under `Projects/AgentCraft` and will be used to define the agent skills for all other projects. It will use the agent skills of this repository: https://github.com/addyosmani/agent-skills
 - The source code of the agent skills is under `agent-skills`.
 - Tasks:
 0. Write a README.md file that explains what this project does and how to use it.

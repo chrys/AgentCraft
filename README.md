@@ -1,84 +1,75 @@
-# Specs Kit - Agent Skills Provisioner
+# AgentCraft - AI Agent Skills Provisioner & Dashboard
 
-Specs Kit is a centralized toolkit designed to manage, update, and provision senior engineering **Agent Skills** across various software projects. By leveraging the standardized agent skills from the [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) project, Specs Kit enables developer tools (like **GitHub Copilot** and **OpenCode**) to follow robust, proven software development processes.
+AgentCraft is a centralized manager and developer dashboard designed to synchronize, discover, and provision custom **AI Agent Skills** across your software projects. 
+
+By pulling agent skill definitions from custom GitHub repositories (such as [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) or [mattpocock/skills](https://github.com/mattpocock/skills)), AgentCraft enables you to manage and package agent instructions for different tools and IDE extensions (like **Antigravity IDE**, **GitHub Copilot**, or **OpenCode**) so they are configured with robust, proven software development processes.
 
 ---
 
 ## 🚀 Key Features
 
-- **Automated Skill Updates**: `scripts/get-updates.sh` keeps the underlying `agent-skills` repository synchronized and updates this README file dynamically with the latest skill descriptions and Git commit logs.
-- **Multi-Tool Support**: Easily provision agent skills tailored for either **GitHub Copilot** or **OpenCode** conventions.
-- **Granular Provisioning**: Choose to copy all skills, or selectively copy specific skills using either their numerical indexes or folder slugs.
-- **Zero Configuration**: Fast and lightweight execution with pure bash script implementation.
+* **Visual Web Dashboard**: An HTMX-powered dashboard to manage repositories, configure paths, and discover skills.
+* **Smart Skills Classification**: Checks your target project and classifies skills into **Existing** (installed) vs **Available** (new) tabs.
+* **Target-Specific Path Formatting**: Auto-packages skills for your specific environment:
+  - **Antigravity IDE**: Copies to `.agents/skills/` and auto-generates custom workflows (`spec-task`, `plan-task`, etc.) in `.agents/workflows/`.
+  - **GitHub Copilot**: Copies to `.github/skills/`.
+  - **OpenCode**: Copies to `skills/`.
+* **Granular Control**: Selectively apply (install/update) or remove individual skills from your projects dynamically.
+* **Clean Git Workspaces**: All cloned source repositories are stored in a dedicated `repos/` directory, which is ignored globally.
 
 ---
 
 ## 🛠️ Getting Started
 
-### Prerequisites
-
-Ensure you have Git installed and that the `agent-skills` submodule or directory is present in the project root:
+### 1. Installation
+Clone the repository and install the Node dependencies:
 ```bash
-git clone https://github.com/addyosmani/agent-skills.git
+npm install
 ```
+
+### 2. Start the Dashboard
+Start the development server:
+```bash
+npm start
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 📖 Usage Guide
+## 🖥️ Using the Dashboard
+
+### Step 1: Manage Repositories (Configuration Tab)
+* Configure the repositories from which you want to pull skills (e.g., name, clone URL, branch, and relative path to skills).
+* Click **Sync Repositories** to clone/fetch updates. The dashboard will show you the exact "Last Synced" timestamp for each repository.
+
+### Step 2: Target Project & Tool Format (Skills Tab)
+* Enter the **Target Project Path** (absolute folder path of your software project).
+* Select your target **Tool / IDE Style** (GitHub Copilot, OpenCode, or Antigravity IDE).
+* Click **Discover Skills**. The dashboard scans your project's directory and populates the skills.
+
+### Step 3: Apply or Remove Skills
+* **Existing Skills**: Displays skills already present in your project, along with their exact file path on your disk. You can remove any installed skill by clicking the red **Remove** button.
+* **Available Skills**: Displays new skills available in your sources. Check the ones you want, and click **Apply Selected Skills** to copy them over.
+* *Note (Antigravity Core)*: In Antigravity mode, if you apply any of the 4 core developer workflows, the other three core skills are automatically applied as dependencies to keep your custom workflows functional.
+
+---
+
+## 📟 CLI Script Usage
+
+If you prefer using the command line, you can run the scripts directly:
 
 ### 1. Synchronizing Skills (`get-updates.sh`)
-To fetch the latest skills and update the documentation catalog dynamically:
+Fetches all configured repositories and dynamically updates this README file:
 ```bash
 bash scripts/get-updates.sh
 ```
-This script will:
-1. Navigate to the `agent-skills` directory.
-2. Pull the latest updates via `git pull origin main`.
-3. Alphabetically list and parse all available skills in `agent-skills/skills/`.
-4. Query the latest Git commits for each skill folder.
-5. Dynamically regenerate the **Available Skills** section in this `README.md` file between the markers.
 
----
-
-### 2. Provisioning Agent Skills to a Project (`createagents.sh`)
-To copy the necessary skill definition (`SKILL.md`) files to a target project, use the provisioner script.
-
-#### Syntax:
+### 2. Provisioning Skills (`createagents.sh`)
+Copies skill definitions to a project target:
 ```bash
 bash scripts/createagents.sh <target-path> --tool <github-copilot | opencode | antigravity-ide> [--skills <indices-or-slugs>]
 ```
-Or use explicit options:
-```bash
-bash scripts/createagents.sh --path <target-path> --tool <github-copilot | opencode | antigravity-ide> [--skills <indices-or-slugs>]
-```
-
-#### Parameters:
-- `-p`, `--path`: The absolute or relative path to the target project directory. If the first argument is a path (doesn't start with `-`), it is automatically parsed as the path.
-- `-t`, `--tool`: The destination IDE/tool style:
-  - `github-copilot`: Copies `SKILL.md` to `<target-path>/.github/skills/<skill-slug>/SKILL.md`
-  - `opencode`: Copies `SKILL.md` to `<target-path>/skills/<skill-slug>/SKILL.md`
-  - `antigravity-ide`: Copies `SKILL.md` to `<target-path>/.agents/skills/<skill-slug>/SKILL.md`, and generates corresponding workflow files in `<target-path>/.agents/workflows/` (`*-task.md`).
-- `-s`, `--skills`: A space-separated list of skill identifiers to copy.
-  - If omitted for `github-copilot` and `opencode`, **all** skills will be copied. For `antigravity-ide`, if omitted, only the 4 core skills needed for the workflows are copied (`incremental-implementation`, `planning-and-task-breakdown`, `code-review-and-quality`, and `spec-driven-development`).
-  - If specifying other skills with `antigravity-ide`, the 4 core skills are automatically included alongside the selected ones.
-  - Can specify **indexes** (e.g., `1 5 12`)
-  - Can specify **slugs** (e.g., `test-driven-development spec-driven-development`)
-  - Can mix both (e.g., `1 5 spec-driven-development`)
-
-#### Examples:
-```bash
-# Provision ALL skills for GitHub Copilot in Project A
-bash scripts/createagents.sh Projects/project-a --tool github-copilot
-
-# Provision specific skills by index for OpenCode in Project B
-bash scripts/createagents.sh Projects/project-b --tool opencode --skills "1 4 9"
-
-# Provision specific skills by folder name for GitHub Copilot in Project C
-bash scripts/createagents.sh Projects/project-c --tool github-copilot --skills "test-driven-development performance-optimization"
-
-# Provision core skills and workflows for Antigravity IDE in Project D
-bash scripts/createagents.sh Projects/project-d --tool antigravity-ide
-```
+* Can specify specific indices (e.g., `1 5 12`) or slugs (e.g., `test-driven-development`).
 
 ---
 
@@ -159,4 +150,4 @@ The list below is dynamically synchronized and updated by `get-updates.sh`.
 ---
 
 ## 🔒 License
-This toolkit is licensed under the MIT License. See [LICENSE](file:///Users/chrys/Projects/Specs_kit/agent-skills/LICENSE) for details.
+This toolkit is licensed under the MIT License.

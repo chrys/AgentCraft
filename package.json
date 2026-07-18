@@ -1,7 +1,7 @@
 {
-  "name": "specs-kit-dashboard",
+  "name": "agentcraft-dashboard",
   "version": "1.0.0",
-  "description": "HTMX Dashboard for Specs Kit",
+  "description": "HTMX Dashboard for AgentCraft",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
