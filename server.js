@@ -108,6 +108,81 @@ function findSkillFiles(dir) {
   return results;
 }
 
+// Pure JS Myers-style/LCS Diff Algorithm
+function diffLines(lines1, lines2) {
+  const n = lines1.length;
+  const m = lines2.length;
+  const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+  
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (lines1[i - 1] === lines2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+  
+  let i = n, j = m;
+  const diff = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && lines1[i - 1] === lines2[j - 1]) {
+      diff.unshift({ type: 'unchanged', text: lines1[i - 1] });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      diff.unshift({ type: 'addition', text: lines2[j - 1] });
+      j--;
+    } else {
+      diff.unshift({ type: 'deletion', text: lines1[i - 1] });
+      i--;
+    }
+  }
+  return diff;
+}
+
+function getDiffText(content1, content2) {
+  const lines1 = content1.replace(/\r/g, '').split('\n');
+  const lines2 = content2.replace(/\r/g, '').split('\n');
+  const diff = diffLines(lines1, lines2);
+  
+  let result = '';
+  const context = 3;
+  
+  for (let k = 0; k < diff.length; k++) {
+    const item = diff[k];
+    if (item.type !== 'unchanged') {
+      for (let offset = -context; offset <= context; offset++) {
+        if (k + offset >= 0 && k + offset < diff.length) {
+          diff[k + offset].needed = true;
+        }
+      }
+    }
+  }
+  
+  let inHunk = false;
+  for (let k = 0; k < diff.length; k++) {
+    const item = diff[k];
+    if (item.needed) {
+      if (!inHunk) {
+        result += `@@ -... +... @@\n`;
+        inHunk = true;
+      }
+      if (item.type === 'addition') {
+        result += `+ ${item.text}\n`;
+      } else if (item.type === 'deletion') {
+        result += `- ${item.text}\n`;
+      } else {
+        result += `  ${item.text}\n`;
+      }
+    } else {
+      inHunk = false;
+    }
+  }
+  return result;
+}
+
 // Helper to get all skills across all sources
 function getSkills() {
   const sources = readSources();
@@ -133,7 +208,8 @@ function getSkills() {
             repo: src.name,
             slug,
             name,
-            description
+            description,
+            sourceFile: skillFile
           });
         }
       } catch (err) {
@@ -206,6 +282,8 @@ function renderSkillsGrid(skillsList, isExisting, targetPath, tool) {
           dest = path.join(resolvedPath, '.github', 'skills', s.slug, 'SKILL.md');
         } else if (tool === 'antigravity-ide') {
           dest = path.join(resolvedPath, '.agents', 'skills', s.slug, 'SKILL.md');
+        } else if (tool === 'opencode') {
+          dest = path.join(resolvedPath, '.opencode', 'skills', s.slug, 'SKILL.md');
         } else {
           dest = path.join(resolvedPath, 'skills', s.slug, 'SKILL.md');
         }
@@ -217,9 +295,12 @@ function renderSkillsGrid(skillsList, isExisting, targetPath, tool) {
           <label class="skill-card-label-compact" style="flex: 1;">
             <input type="checkbox" name="skills" value="${s.slug}" class="skill-checkbox">
             <div class="skill-card-compact">
-              <div class="skill-card-header-compact">
-                <span class="skill-name-compact">${s.name}</span>
-                ${isExisting ? '<span class="status-badge-installed">Installed</span>' : ''}
+              <div class="skill-card-header-compact" style="display: flex; align-items: center; justify-content: space-between;">
+                <span class="skill-name-compact" style="font-weight: 600;">${s.name}</span>
+                <div style="display: flex; gap: 0.35rem; align-items: center;">
+                  ${isExisting ? '<span class="status-badge-installed">Installed</span>' : ''}
+                  ${isExisting && s.hasUpdate ? '<span class="status-badge-update">Update Available</span>' : ''}
+                </div>
               </div>
               <span class="skill-slug-compact"><code>${s.slug}</code> <span style="opacity: 0.3; margin: 0 0.4rem;">•</span> <span class="repo-badge-compact">Source: ${s.repo}</span></span>
               <p class="skill-desc-compact">${s.description}</p>
@@ -299,19 +380,45 @@ function renderSkillsCardHtml(targetPath, tool) {
   const availableSkills = [];
 
   const resolvedPath = path.isAbsolute(targetPath) ? targetPath : path.resolve(__dirname, targetPath);
+  const diffs = [];
+
+  const repoSkillSlugs = new Set();
 
   for (const skill of allSkills) {
+    repoSkillSlugs.add(skill.slug);
     let isInstalled = false;
     let dest = '';
     if (tool === 'github-copilot') {
       dest = path.join(resolvedPath, '.github', 'skills', skill.slug, 'SKILL.md');
     } else if (tool === 'antigravity-ide') {
       dest = path.join(resolvedPath, '.agents', 'skills', skill.slug, 'SKILL.md');
+    } else if (tool === 'opencode') {
+      dest = path.join(resolvedPath, '.opencode', 'skills', skill.slug, 'SKILL.md');
     } else {
       dest = path.join(resolvedPath, 'skills', skill.slug, 'SKILL.md');
     }
     if (fs.existsSync(dest)) {
       isInstalled = true;
+      try {
+        const installedContent = fs.readFileSync(dest, 'utf8');
+        const repoContent = fs.readFileSync(skill.sourceFile, 'utf8');
+        
+        const cleanInstalled = installedContent.replace(/\r/g, '');
+        const cleanRepo = repoContent.replace(/\r/g, '');
+        
+        if (cleanInstalled !== cleanRepo) {
+          skill.hasUpdate = true;
+          const diffText = getDiffText(cleanInstalled, cleanRepo);
+          diffs.push({
+            slug: skill.slug,
+            name: skill.name,
+            repo: skill.repo,
+            diffText
+          });
+        }
+      } catch (err) {
+        console.error(`Error comparing skill ${skill.slug}:`, err.message);
+      }
     }
 
     if (isInstalled) {
@@ -319,6 +426,94 @@ function renderSkillsCardHtml(targetPath, tool) {
     } else {
       availableSkills.push(skill);
     }
+  }
+
+  // Scan target path for local installed skills not originating from source repos
+  let targetSkillsDir = '';
+  if (tool === 'github-copilot') {
+    targetSkillsDir = path.join(resolvedPath, '.github', 'skills');
+  } else if (tool === 'antigravity-ide') {
+    targetSkillsDir = path.join(resolvedPath, '.agents', 'skills');
+  } else if (tool === 'opencode') {
+    targetSkillsDir = path.join(resolvedPath, '.opencode', 'skills');
+  } else {
+    targetSkillsDir = path.join(resolvedPath, 'skills');
+  }
+
+  if (fs.existsSync(targetSkillsDir)) {
+    try {
+      const localSkillFiles = findSkillFiles(targetSkillsDir);
+      for (const skillFile of localSkillFiles) {
+        const skillDir = path.dirname(skillFile);
+        const slug = path.basename(skillDir);
+
+        if (!repoSkillSlugs.has(slug)) {
+          let name = slug;
+          let description = '*Target project skill*';
+          try {
+            const skillContent = fs.readFileSync(skillFile, 'utf8');
+            const nameMatch = skillContent.match(/^name:\s*(.+)$/m);
+            const descMatch = skillContent.match(/^description:\s*(.+)$/m);
+            if (nameMatch) name = nameMatch[1].trim();
+            if (descMatch) description = descMatch[1].trim();
+          } catch (e) {}
+
+          existingSkills.push({
+            repo: 'Target Project',
+            slug,
+            name,
+            description,
+            sourceFile: skillFile,
+            isLocalOnly: true
+          });
+        }
+      }
+    } catch (err) {
+      console.error(`Error scanning target skills in ${targetSkillsDir}:`, err.message);
+    }
+  }
+
+  let diffHtml = '';
+  if (diffs.length > 0) {
+    diffHtml = `
+      <div id="diff-card-container" hx-swap-oob="true" class="card glass diff-card full-width-console" style="display: block;">
+        <div class="card-header">
+          <h2>Skill Differences</h2>
+          <p>Differences between installed skills and source repositories</p>
+        </div>
+        <div class="diff-wrapper">
+          ${diffs.map(d => {
+            const escapedDiff = d.diffText
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .split('\n')
+              .map(line => {
+                let cls = 'diff-line';
+                if (line.startsWith('+')) cls += ' diff-addition';
+                else if (line.startsWith('-')) cls += ' diff-deletion';
+                else if (line.startsWith('@@')) cls += ' diff-header';
+                return `<span class="${cls}">${line}</span>`;
+              })
+              .join('\n');
+
+            return `
+              <div class="diff-item">
+                <div class="diff-item-header">
+                  <span class="diff-item-name">${d.name}</span>
+                  <span class="repo-badge">${d.repo}</span>
+                </div>
+                <pre class="diff-code"><code>${escapedDiff}</code></pre>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  } else {
+    diffHtml = `
+      <div id="diff-card-container" hx-swap-oob="true" style="display: none;"></div>
+    `;
   }
 
   return `
@@ -355,11 +550,15 @@ function renderSkillsCardHtml(targetPath, tool) {
       </div>
     </div>
 
-    <div class="card-footer">
+    <div class="card-footer" style="display: flex; gap: 0.75rem; justify-content: flex-end; align-items: center;">
+      <button type="button" id="btn-remove-selected" class="btn btn-danger btn-lg" onclick="removeSelectedSkills()">
+        <span class="btn-icon">🗑️</span> Remove Selected Skills
+      </button>
       <button type="submit" class="btn btn-primary btn-lg">
         <span class="btn-icon">🚀</span> Apply Selected Skills
       </button>
     </div>
+    ${diffHtml}
   `;
 }
 
@@ -384,7 +583,7 @@ app.get('/api/skills', (req, res) => {
   res.send(renderSkillsCardHtml(targetPath, tool));
 });
 
-// Delete (remove) a skill from the target project
+// Delete (remove) a single skill from the target project
 app.delete('/api/skills', (req, res) => {
   const targetPath = getQueryParam(req.query.targetPath);
   const tool = getQueryParam(req.query.tool) || 'github-copilot';
@@ -401,6 +600,8 @@ app.delete('/api/skills', (req, res) => {
     destFolder = path.join(resolvedPath, '.github', 'skills', slug);
   } else if (tool === 'antigravity-ide') {
     destFolder = path.join(resolvedPath, '.agents', 'skills', slug);
+  } else if (tool === 'opencode') {
+    destFolder = path.join(resolvedPath, '.opencode', 'skills', slug);
   } else {
     destFolder = path.join(resolvedPath, 'skills', slug);
   }
@@ -414,6 +615,43 @@ app.delete('/api/skills', (req, res) => {
     console.error(`Error deleting skill ${slug}:`, err.message);
     res.status(500).send(`Failed to delete skill: ${err.message}`);
   }
+});
+
+// Batch delete (remove) multiple skills from the target project
+app.post('/api/skills/delete-batch', (req, res) => {
+  const { targetPath, tool, skills } = req.body;
+
+  if (!targetPath) {
+    return res.status(400).send('Target path is required.');
+  }
+
+  const resolvedPath = path.isAbsolute(targetPath) ? targetPath : path.resolve(__dirname, targetPath);
+  const selectedSlugs = Array.isArray(skills) ? skills : (skills ? [skills] : []);
+
+  if (selectedSlugs.length > 0) {
+    for (const slug of selectedSlugs) {
+      let destFolder = '';
+      if (tool === 'github-copilot') {
+        destFolder = path.join(resolvedPath, '.github', 'skills', slug);
+      } else if (tool === 'antigravity-ide') {
+        destFolder = path.join(resolvedPath, '.agents', 'skills', slug);
+      } else if (tool === 'opencode') {
+        destFolder = path.join(resolvedPath, '.opencode', 'skills', slug);
+      } else {
+        destFolder = path.join(resolvedPath, 'skills', slug);
+      }
+
+      try {
+        if (fs.existsSync(destFolder)) {
+          fs.rmSync(destFolder, { recursive: true, force: true });
+        }
+      } catch (err) {
+        console.error(`Error batch deleting skill ${slug}:`, err.message);
+      }
+    }
+  }
+
+  res.send(renderSkillsCardHtml(targetPath, tool || 'github-copilot'));
 });
 
 // Run Sync Repositories (get-updates.sh)

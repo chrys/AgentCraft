@@ -306,6 +306,8 @@ for idx in "${DEDUPLICATED_INDICES[@]}"; do
     dest_dir="$TARGET_PATH/.github/skills/$slug"
   elif [[ "$TOOL_TYPE" == "antigravity-ide" ]]; then
     dest_dir="$TARGET_PATH/.agents/skills/$slug"
+  elif [[ "$TOOL_TYPE" == "opencode" ]]; then
+    dest_dir="$TARGET_PATH/.opencode/skills/$slug"
   else
     dest_dir="$TARGET_PATH/skills/$slug"
   fi

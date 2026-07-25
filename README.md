@@ -13,7 +13,7 @@ By pulling agent skill definitions from custom GitHub repositories (such as [add
 * **Target-Specific Path Formatting**: Auto-packages skills for your specific environment:
   - **Antigravity IDE**: Copies to `.agents/skills/` and auto-generates custom workflows (`spec-task`, `plan-task`, etc.) in `.agents/workflows/`.
   - **GitHub Copilot**: Copies to `.github/skills/`.
-  - **OpenCode**: Copies to `skills/`.
+  - **OpenCode**: Copies to `.opencode/skills/`.
 * **Granular Control**: Selectively apply (install/update) or remove individual skills from your projects dynamically.
 * **Clean Git Workspaces**: All cloned source repositories are stored in a dedicated `repos/` directory, which is ignored globally.
 
@@ -135,7 +135,7 @@ The list below is dynamically synchronized and updated by `get-updates.sh`.
 | 53 | `agent-skills` | `test-driven-development` | Drives development with tests. Use when implementing any logic, fixing any bug, or changing any behavior. Use when you need to prove that code works, when a bug report arrives, or when you're about to modify existing functionality. | N/A \| Direct copy / no git history |
 | 54 | `matt pocock skills` | `to-questionnaire` | Turn a decision you can't fully answer into a questionnaire for someone else to fill in. | 2026-07-14 \| Cut no-op justification and template the questionnaire structure |
 | 55 | `matt pocock skills` | `to-spec` | Turn the current conversation into a spec and publish it to the project issue tracker — no interview, just synthesis of what you've already discussed. | 2026-07-13 \| feat: add Codex agents/openai.yaml metadata to every skill |
-| 56 | `matt pocock skills` | `to-tickets` | Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker — edges as text in one file per ticket locally, or native blocking links on a real tracker. | 2026-07-13 \| feat: add Codex agents/openai.yaml metadata to every skill |
+| 56 | `matt pocock skills` | `to-tickets` | Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker — edges as text in one file per ticket locally, or native blocking links on a real tracker. | 2026-07-21 \| refactor(to-tickets): remove redundant instructions for ticket implementation |
 | 57 | `matt pocock skills` | `triage` | Move issues and external PRs through a state machine of triage roles — categorise, verify, grill if needed, and write agent-ready briefs. | 2026-07-13 \| feat: add Codex agents/openai.yaml metadata to every skill |
 | 58 | `matt pocock skills` | `ubiquitous-language` | Extract a DDD-style ubiquitous language glossary from the current conversation, flagging ambiguities and proposing canonical terms. Saves to UBIQUITOUS_LANGUAGE.md. Use when user wants to define domain terms, build a glossary, harden terminology, create a ubiquitous language, or mentions "domain model" or "DDD". | 2026-07-13 \| feat: add Codex agents/openai.yaml metadata to every skill |
 | 59 | `agent-skills` | `using-agent-skills` | Discovers and invokes agent skills. Use when starting a session or when you need to discover which skill applies to the current task. This is the meta-skill that governs how all other skills are discovered and invoked. | N/A \| Direct copy / no git history |

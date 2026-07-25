@@ -1,94 +1,81 @@
-const fs = require('fs');
-const path = require('path');
-
-const SOURCES_FILE = path.join(__dirname, '../sources.txt');
-
-function readSources() {
-  if (!fs.existsSync(SOURCES_FILE)) {
-    return [];
-  }
-  const content = fs.readFileSync(SOURCES_FILE, 'utf8');
-  const lines = content.split('\n');
-  const sources = [];
-  for (let line of lines) {
-    line = line.trim();
-    if (!line || line.startsWith('#')) {
-      continue;
-    }
-    const parts = line.split('|').map(p => p.trim());
-    if (parts.length >= 5) {
-      sources.push({
-        name: parts[0],
-        path: parts[1],
-        url: parts[2],
-        branch: parts[3],
-        skillsPath: parts[4]
-      });
-    }
-  }
-  return sources;
-}
-
-function findSkillFiles(dir) {
-  let results = [];
-  if (!fs.existsSync(dir)) return results;
-  try {
-    const list = fs.readdirSync(dir);
-    for (const file of list) {
-      const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-      if (stat && stat.isDirectory()) {
-        results = results.concat(findSkillFiles(filePath));
-      } else if (file === 'SKILL.md') {
-        results.push(filePath);
+function diffLines(lines1, lines2) {
+  const n = lines1.length;
+  const m = lines2.length;
+  const dp = Array.from({ length: n + 1 }, () => Array(m + 1).fill(0));
+  
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (lines1[i - 1] === lines2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
       }
     }
-  } catch (err) {
-    console.error(`Error scanning directory ${dir}:`, err.message);
   }
-  return results;
+  
+  let i = n, j = m;
+  const diff = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && lines1[i - 1] === lines2[j - 1]) {
+      diff.unshift({ type: 'unchanged', text: lines1[i - 1] });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      diff.unshift({ type: 'addition', text: lines2[j - 1] });
+      j--;
+    } else {
+      diff.unshift({ type: 'deletion', text: lines1[i - 1] });
+      i--;
+    }
+  }
+  return diff;
 }
 
-function getSkills() {
-  const sources = readSources();
-  const allSkills = [];
-  for (const src of sources) {
-    const fullRepoPath = path.join(__dirname, '../repos', src.path);
-    const fullSkillsDir = path.join(fullRepoPath, src.skillsPath);
-    if (fs.existsSync(fullSkillsDir)) {
-      try {
-        const skillFiles = findSkillFiles(fullSkillsDir);
-        for (const skillFile of skillFiles) {
-          const skillContent = fs.readFileSync(skillFile, 'utf8');
-          const skillDir = path.dirname(skillFile);
-          const slug = path.basename(skillDir);
-          
-          const nameMatch = skillContent.match(/^name:\s*(.+)$/m);
-          const descMatch = skillContent.match(/^description:\s*(.+)$/m);
-          const name = nameMatch ? nameMatch[1].trim() : slug;
-          const description = descMatch ? descMatch[1].trim() : '*No description available*';
-          
-          allSkills.push({
-            repo: src.name,
-            slug,
-            name,
-            description
-          });
+function getDiffText(content1, content2) {
+  const lines1 = content1.replace(/\r/g, '').split('\n');
+  const lines2 = content2.replace(/\r/g, '').split('\n');
+  const diff = diffLines(lines1, lines2);
+  
+  let result = '';
+  const context = 3;
+  
+  for (let k = 0; k < diff.length; k++) {
+    const item = diff[k];
+    if (item.type !== 'unchanged') {
+      for (let offset = -context; offset <= context; offset++) {
+        if (k + offset >= 0 && k + offset < diff.length) {
+          diff[k + offset].needed = true;
         }
-      } catch (err) {
-        console.error(`Error reading skills from ${fullSkillsDir}:`, err.message);
       }
     }
   }
-  return allSkills;
+  
+  let inHunk = false;
+  for (let k = 0; k < diff.length; k++) {
+    const item = diff[k];
+    if (item.needed) {
+      if (!inHunk) {
+        result += `@@ -... +... @@\n`;
+        inHunk = true;
+      }
+      if (item.type === 'addition') {
+        result += `+ ${item.text}\n`;
+      } else if (item.type === 'deletion') {
+        result += `- ${item.text}\n`;
+      } else {
+        result += `  ${item.text}\n`;
+      }
+    } else {
+      inHunk = false;
+    }
+  }
+  return result;
 }
 
-const skills = getSkills();
-const slugCounts = {};
-skills.forEach(s => {
-  slugCounts[s.slug] = (slugCounts[s.slug] || 0) + 1;
-});
+// Test cases
+const str1 = 'hello\nmy\nname\nis\njohn\nand\ni\nlike\ncoding';
+const str2 = 'hello\nname\nwas\nis\njohn\nand\ni\nlove\ncoding\nvery much';
 
-const duplicates = Object.entries(slugCounts).filter(([slug, count]) => count > 1);
-console.log('Duplicate slugs:', duplicates);
+console.log(getDiffText(str1, str2));
+
 

@@ -164,7 +164,7 @@
                       <div class="tool-card">
                         <span class="tool-icon">📂</span>
                         <span class="tool-name">OpenCode</span>
-                        <span class="tool-desc">Copies to <code>skills/</code></span>
+                        <span class="tool-desc">Copies to <code>.opencode/skills/</code></span>
                       </div>
                     </label>
 
@@ -193,6 +193,9 @@
               </div>
             </div>
           </div>
+
+          <!-- Skill Differences Card -->
+          <div id="diff-card-container" style="display: none;"></div>
 
           <!-- Bottom Section: Execution Console -->
           <div class="card glass console-card full-width-console">
@@ -253,11 +256,35 @@
       document.getElementById('btn-subtab-' + subTabId).classList.add('active');
     }
 
-    // Select/Deselect all checkboxes
+    // Select/Deselect all checkboxes in active sub-tab
     function selectAllSkills(select) {
-      const checkboxes = document.querySelectorAll('.skill-checkbox');
+      const activePanel = document.querySelector('.subtab-panel.active');
+      const checkboxes = activePanel ? activePanel.querySelectorAll('.skill-checkbox') : document.querySelectorAll('.skill-checkbox');
       checkboxes.forEach(cb => {
         cb.checked = select;
+      });
+    }
+
+    // Remove selected skills from target project
+    function removeSelectedSkills() {
+      const activePanel = document.querySelector('#subtab-existing');
+      if (!activePanel) return;
+      const checkedInputs = activePanel.querySelectorAll('.skill-checkbox:checked');
+      if (checkedInputs.length === 0) {
+        alert('Please select at least one installed skill under Existing Skills to remove.');
+        return;
+      }
+      const names = Array.from(checkedInputs).map(cb => cb.value);
+      if (!confirm(`Are you sure you want to remove ${names.length} selected skill(s) from the target project?`)) {
+        return;
+      }
+      const targetPath = document.getElementById('target-path').value;
+      const toolEl = document.querySelector('input[name="tool"]:checked');
+      const tool = toolEl ? toolEl.value : '';
+
+      htmx.ajax('POST', '/api/skills/delete-batch', {
+        values: { targetPath, tool, skills: names },
+        target: '#skills-card-container'
       });
     }
   </script>
