@@ -323,6 +323,29 @@ body {
   text-decoration: underline;
 }
 
+.comments-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.sync-timestamp {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sync-changes {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 /* Forms & Inputs */
 .form-grid {
   display: grid;
@@ -882,6 +905,28 @@ input[type="text"]:focus, input[type="url"]:focus {
   letter-spacing: 0.03em;
 }
 
+.status-badge-enabled {
+  display: inline-block;
+  font-size: 0.75rem;
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.status-badge-disabled {
+  display: inline-block;
+  font-size: 0.75rem;
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
 /* Diff styles */
 .diff-card {
   margin-bottom: 2rem;
@@ -958,4 +1003,271 @@ input[type="text"]:focus, input[type="url"]:focus {
   font-weight: 500;
   opacity: 0.85;
 }
+
+/* Skill Editor Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(4, 7, 14, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 1280px;
+  height: 88vh;
+  max-height: 900px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.75rem;
+  border-bottom: 1px solid var(--border-glass);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.modal-icon {
+  font-size: 1.75rem;
+}
+
+.modal-title-group h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.modal-filepath {
+  margin-top: 0.2rem;
+}
+
+.modal-filepath code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--accent);
+  background: rgba(16, 185, 129, 0.1);
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.btn-modal-close {
+  padding: 0.4rem 0.75rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.modal-body {
+  flex: 1;
+  padding: 1.25rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 12, 20, 0.85);
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Modal Split Layout */
+.modal-split-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  height: 100%;
+  min-height: 0;
+}
+
+.modal-single-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.split-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: rgba(10, 15, 26, 0.9);
+  border: 1px solid var(--border-glass);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.split-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: rgba(15, 23, 42, 0.75);
+  border-bottom: 1px solid var(--border-glass);
+}
+
+.split-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pane-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-upstream {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.badge-local {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.pane-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.split-pane-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.diff-code-panel {
+  background: #02040a;
+  padding: 0.75rem;
+  overflow-y: auto;
+}
+
+.diff-code-block {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+.editor-pane-content {
+  padding: 0;
+}
+
+.code-editor-textarea {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  background: #02040a;
+  color: #f8fafc;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  padding: 1.25rem;
+  border: none;
+  resize: none;
+  tab-size: 2;
+  outline: none;
+  transition: box-shadow 0.2s;
+}
+
+.code-editor-textarea:focus {
+  box-shadow: inset 0 0 0 1px var(--border-focus);
+}
+
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.75rem;
+  border-top: 1px solid var(--border-glass);
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.modal-tip {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.save-status-msg {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.status-saving {
+  color: var(--text-secondary);
+}
+
+.status-saved {
+  color: var(--success);
+}
+
+.status-err {
+  color: var(--error);
+}
+
+.btn-xs {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  border-radius: 4px;
+}
+
+.skill-card-container-compact {
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.skill-card-container-compact:hover {
+  filter: brightness(1.03);
+}
+
+
 

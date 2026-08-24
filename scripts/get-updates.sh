@@ -45,6 +45,8 @@ while IFS='|' read -r name rpath url branch rel_path || [ -n "$name" ]; do
 done < "$SOURCES_FILE"
 
 # 2. Sync all sources
+total_changes=0
+
 for i in "${!SOURCE_NAMES[@]}"; do
   name="${SOURCE_NAMES[$i]}"
   rpath="${SOURCE_PATHS[$i]}"
@@ -52,21 +54,52 @@ for i in "${!SOURCE_NAMES[@]}"; do
   branch="${SOURCE_BRANCHES[$i]}"
   
   FULL_REPO_PATH="$PROJECT_ROOT/repos/$rpath"
+  changes_count=0
   
   if [ ! -d "$FULL_REPO_PATH" ]; then
     echo "Cloning latest updates for $name into $rpath..." >&2
     mkdir -p "$(dirname "$FULL_REPO_PATH")"
-    git clone -b "$branch" "$url" "$FULL_REPO_PATH" >/dev/null 2>&1 || echo "Warning: git clone failed for $name. Proceeding with existing local state." >&2
+    if git clone -b "$branch" "$url" "$FULL_REPO_PATH" >/dev/null 2>&1; then
+      cd "$FULL_REPO_PATH"
+      changes_count=$(git rev-list --count HEAD 2>/dev/null || echo 0)
+      cd "$PROJECT_ROOT"
+      echo "  -> Cloned successfully ($changes_count changes found)." >&2
+    else
+      echo "Warning: git clone failed for $name. Proceeding with existing local state." >&2
+    fi
   else
     echo "Fetching latest updates for $name..." >&2
     cd "$FULL_REPO_PATH"
     if [ -e ".git" ]; then
+      OLD_REV=$(git rev-parse HEAD 2>/dev/null || echo "")
       git fetch origin "$branch" >/dev/null 2>&1 || echo "Warning: git fetch failed for $name. Proceeding with local version." >&2
       git pull origin "$branch" >/dev/null 2>&1 || echo "Warning: git pull failed for $name. Proceeding with local version." >&2
+      NEW_REV=$(git rev-parse HEAD 2>/dev/null || echo "")
+      
+      if [ -n "$OLD_REV" ] && [ -n "$NEW_REV" ] && [ "$OLD_REV" != "$NEW_REV" ]; then
+        changes_count=$(git rev-list --count "$OLD_REV..$NEW_REV" 2>/dev/null || echo 0)
+        echo "  -> Found $changes_count new change(s) in $name." >&2
+      else
+        changes_count=0
+        echo "  -> No new changes found for $name (already up to date)." >&2
+      fi
     else
       echo "Notice: $rpath is not a Git repository. Skipping git pull." >&2
     fi
     cd "$PROJECT_ROOT"
+  fi
+
+  re='^[0-9]+$'
+  if ! [[ $changes_count =~ $re ]]; then
+    changes_count=0
+  fi
+
+  total_changes=$((total_changes + changes_count))
+
+  if [ "$changes_count" -eq 1 ]; then
+    changes_str="1 change found"
+  else
+    changes_str="$changes_count changes found"
   fi
 
   # Update sync-state.txt for this repo
@@ -76,9 +109,12 @@ for i in "${!SOURCE_NAMES[@]}"; do
   if [ -f "$SYNC_STATE_FILE" ]; then
     grep -v "^${name}:" "$SYNC_STATE_FILE" > "$temp_state" || true
   fi
-  echo "${name}: $(date +"%Y-%m-%d %H:%M:%S")" >> "$temp_state"
+  echo "${name}: $(date +"%Y-%m-%d %H:%M:%S") | ${changes_str}" >> "$temp_state"
   mv "$temp_state" "$SYNC_STATE_FILE"
 done
+
+echo "=== Synced ${#SOURCE_NAMES[@]} active repositories ($total_changes total change(s) found) ===" >&2
+
 
 # 3. Read and parse skills across all repositories
 skills_data=""

@@ -71,12 +71,23 @@ function readSyncStates() {
       const lines = content.split('\n');
       for (let line of lines) {
         let trimmed = line.trim();
-        if (trimmed) {
-          const parts = trimmed.split(':');
-          if (parts.length >= 2) {
-            const key = parts[0].trim();
-            const val = parts.slice(1).join(':').trim();
-            states[key] = val;
+        if (trimmed && !trimmed.startsWith('#')) {
+          const colonIdx = trimmed.indexOf(':');
+          if (colonIdx !== -1) {
+            const key = trimmed.slice(0, colonIdx).trim();
+            const val = trimmed.slice(colonIdx + 1).trim();
+            if (val.includes('|')) {
+              const parts = val.split('|').map(s => s.trim());
+              states[key] = {
+                timestamp: parts[0] || 'Never',
+                changes: parts[1] || '0 changes found'
+              };
+            } else {
+              states[key] = {
+                timestamp: val || 'Never',
+                changes: '0 changes found'
+              };
+            }
           }
         }
       }
@@ -229,7 +240,20 @@ function renderSourcesHtml(sources) {
   }
   const syncStates = readSyncStates();
   return sources.map(src => {
-    const lastSynced = syncStates[src.name] || 'Never';
+    const state = syncStates[src.name];
+    let commentsHtml = '';
+    if (!state) {
+      commentsHtml = '<span class="text-muted" style="font-size: 0.85rem;">Never synced</span>';
+    } else {
+      const ts = state.timestamp || 'Never';
+      const changes = state.changes || '0 changes found';
+      commentsHtml = `
+        <div class="comments-cell">
+          <span class="sync-timestamp">⏱️ ${ts}</span>
+          <span class="sync-changes">📊 ${changes}</span>
+        </div>
+      `;
+    }
     return `
       <tr>
         <td><span class="repo-badge">${src.name}</span></td>
@@ -237,7 +261,7 @@ function renderSourcesHtml(sources) {
         <td><a href="${src.url}" target="_blank" class="repo-url-link">${src.url}</a></td>
         <td><code>${src.branch}</code></td>
         <td><code>${src.skillsPath}</code></td>
-        <td><span class="sync-timestamp">⏱️ ${lastSynced}</span></td>
+        <td>${commentsHtml}</td>
         <td>
           <button class="btn btn-danger btn-sm" 
                   hx-delete="/api/sources?name=${encodeURIComponent(src.name)}" 
@@ -254,7 +278,7 @@ function renderSourcesHtml(sources) {
 // Helper to render compact skills grid
 function renderSkillsGrid(skillsList, isExisting, targetPath, tool) {
   if (skillsList.length === 0) {
-    return `<div class="no-skills-msg py-4 text-center"><p>${isExisting ? 'No skills currently installed in this project directory.' : 'No new skills available in repositories.'}</p></div>`;
+    return `<div class="no-skills-msg py-4 text-center"><p>${isExisting ? 'No skills or commands currently installed in this project directory.' : 'No new skills available in repositories.'}</p></div>`;
   }
   
   // Group skills by repo
@@ -268,41 +292,71 @@ function renderSkillsGrid(skillsList, isExisting, targetPath, tool) {
 
   let html = '';
   for (const repo in grouped) {
+    const isSpecialGroup = repo.startsWith('Workflows') || repo.startsWith('Commands') || repo.startsWith('Slash Commands');
+    const groupTitle = isSpecialGroup ? `<span class="accent-text">${repo}</span>` : `Repository: <span class="accent-text">${repo}</span>`;
+
     html += `
       <div class="skills-group">
-        <h4 class="skills-group-title-sub">Repository: <span class="accent-text">${repo}</span></h4>
+        <h4 class="skills-group-title-sub">${groupTitle}</h4>
         <div class="skills-grid-compact">
     `;
     grouped[repo].forEach(s => {
-      let locationHtml = '';
-      if (isExisting && targetPath) {
-        const resolvedPath = path.isAbsolute(targetPath) ? targetPath : path.resolve(__dirname, targetPath);
-        let dest = '';
-        if (tool === 'github-copilot') {
-          dest = path.join(resolvedPath, '.github', 'skills', s.slug, 'SKILL.md');
-        } else if (tool === 'antigravity-ide') {
-          dest = path.join(resolvedPath, '.agents', 'skills', s.slug, 'SKILL.md');
-        } else if (tool === 'opencode') {
-          dest = path.join(resolvedPath, '.opencode', 'skills', s.slug, 'SKILL.md');
+      let dest = s.destPath;
+      if (!dest) {
+        if (isExisting && targetPath) {
+          const resolvedPath = path.isAbsolute(targetPath) ? targetPath : path.resolve(__dirname, targetPath);
+          if (tool === 'github-copilot') {
+            dest = path.join(resolvedPath, '.github', 'skills', s.slug, 'SKILL.md');
+          } else if (tool === 'antigravity-ide') {
+            dest = path.join(resolvedPath, '.agents', 'skills', s.slug, 'SKILL.md');
+          } else if (tool === 'opencode') {
+            dest = path.join(resolvedPath, '.opencode', 'skills', s.slug, 'SKILL.md');
+          } else {
+            dest = path.join(resolvedPath, 'skills', s.slug, 'SKILL.md');
+          }
         } else {
-          dest = path.join(resolvedPath, 'skills', s.slug, 'SKILL.md');
+          dest = s.sourceFile || '';
         }
+      }
+
+      let locationHtml = '';
+      if (isExisting && dest) {
         locationHtml = `<p class="skill-location-compact">📍 <code>${dest}</code></p>`;
       }
 
+      let badgeHtml = '';
+      if (isExisting) {
+        if (s.isWorkflow) {
+          badgeHtml = '<span class="status-badge-installed" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3);">Workflow</span>';
+        } else if (s.isCommand) {
+          badgeHtml = '<span class="status-badge-installed" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.3);">Command</span>';
+        } else {
+          badgeHtml = '<span class="status-badge-installed">Installed</span>';
+        }
+      }
+
+      const displaySlug = s.slug.replace(/^(workflow|command):/, '');
+      const sourceLabel = s.isWorkflow ? 'Workflow' : (s.isCommand ? 'Slash Command' : `Source: ${s.repo}`);
+      const encodedDest = encodeURIComponent(dest);
+      const encodedName = encodeURIComponent(s.name);
+      const repoFile = s.sourceFile || '';
+      const encodedRepoPath = encodeURIComponent(repoFile);
+
       html += `
-        <div class="skill-card-container-compact">
+        <div class="skill-card-container-compact" 
+             ondblclick="openSkillEditor('${encodedDest}', '${encodedName}', '${encodedRepoPath}', event)"
+             title="Double-click to review & edit">
           <label class="skill-card-label-compact" style="flex: 1;">
             <input type="checkbox" name="skills" value="${s.slug}" class="skill-checkbox">
             <div class="skill-card-compact">
               <div class="skill-card-header-compact" style="display: flex; align-items: center; justify-content: space-between;">
                 <span class="skill-name-compact" style="font-weight: 600;">${s.name}</span>
                 <div style="display: flex; gap: 0.35rem; align-items: center;">
-                  ${isExisting ? '<span class="status-badge-installed">Installed</span>' : ''}
+                  ${badgeHtml}
                   ${isExisting && s.hasUpdate ? '<span class="status-badge-update">Update Available</span>' : ''}
                 </div>
               </div>
-              <span class="skill-slug-compact"><code>${s.slug}</code> <span style="opacity: 0.3; margin: 0 0.4rem;">•</span> <span class="repo-badge-compact">Source: ${s.repo}</span></span>
+              <span class="skill-slug-compact"><code>${displaySlug}</code> <span style="opacity: 0.3; margin: 0 0.4rem;">•</span> <span class="repo-badge-compact">${sourceLabel}</span></span>
               <p class="skill-desc-compact">${s.description}</p>
               ${locationHtml}
             </div>
@@ -464,6 +518,7 @@ function renderSkillsCardHtml(targetPath, tool) {
             name,
             description,
             sourceFile: skillFile,
+            destPath: skillFile,
             isLocalOnly: true
           });
         }
@@ -473,50 +528,137 @@ function renderSkillsCardHtml(targetPath, tool) {
     }
   }
 
-  let diffHtml = '';
-  if (diffs.length > 0) {
-    diffHtml = `
-      <div id="diff-card-container" hx-swap-oob="true" class="card glass diff-card full-width-console" style="display: block;">
-        <div class="card-header">
-          <h2>Skill Differences</h2>
-          <p>Differences between installed skills and source repositories</p>
-        </div>
-        <div class="diff-wrapper">
-          ${diffs.map(d => {
-            const escapedDiff = d.diffText
-              .replace(/&/g, '&amp;')
-              .replace(/</g, '&lt;')
-              .replace(/>/g, '&gt;')
-              .split('\n')
-              .map(line => {
-                let cls = 'diff-line';
-                if (line.startsWith('+')) cls += ' diff-addition';
-                else if (line.startsWith('-')) cls += ' diff-deletion';
-                else if (line.startsWith('@@')) cls += ' diff-header';
-                return `<span class="${cls}">${line}</span>`;
-              })
-              .join('\n');
+  // Scan target path for local workflows / commands
+  if (tool === 'antigravity-ide') {
+    const targetWorkflowsDir = path.join(resolvedPath, '.agents', 'workflows');
+    if (fs.existsSync(targetWorkflowsDir)) {
+      try {
+        const files = fs.readdirSync(targetWorkflowsDir);
+        for (const file of files) {
+          if (file.endsWith('.md') || file.endsWith('.toml')) {
+            const filePath = path.join(targetWorkflowsDir, file);
+            let name = file.replace(/\.(md|toml)$/, '');
+            let description = '*Antigravity workflow*';
+            try {
+              const content = fs.readFileSync(filePath, 'utf8');
+              const nameMatch = content.match(/^name:\s*(.+)$/m) || content.match(/^name\s*=\s*["']([^"']+)["']/m);
+              const descMatch = content.match(/^description:\s*(.+)$/m) || content.match(/^description\s*=\s*["']([^"']+)["']/m);
+              if (nameMatch) name = nameMatch[1].trim();
+              if (descMatch) description = descMatch[1].trim();
+            } catch (e) {}
 
-            return `
-              <div class="diff-item">
-                <div class="diff-item-header">
-                  <span class="diff-item-name">${d.name}</span>
-                  <span class="repo-badge">${d.repo}</span>
-                </div>
-                <pre class="diff-code"><code>${escapedDiff}</code></pre>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    `;
-  } else {
-    diffHtml = `
-      <div id="diff-card-container" hx-swap-oob="true" style="display: none;"></div>
-    `;
+            existingSkills.push({
+              repo: 'Workflows (.agents/workflows/)',
+              slug: `workflow:${file}`,
+              name: `/${name.replace(/^\//, '')}`,
+              description,
+              destPath: filePath,
+              sourceFile: filePath,
+              isWorkflow: true
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Error scanning workflows in ${targetWorkflowsDir}:`, err.message);
+      }
+    }
+  } else if (tool === 'opencode') {
+    const targetCommandsDir = path.join(resolvedPath, '.opencode', 'commands');
+    if (fs.existsSync(targetCommandsDir)) {
+      try {
+        const files = fs.readdirSync(targetCommandsDir);
+        for (const file of files) {
+          if (file.endsWith('.md')) {
+            const filePath = path.join(targetCommandsDir, file);
+            let name = file.replace(/\.md$/, '');
+            let description = '*OpenCode slash command*';
+            try {
+              const content = fs.readFileSync(filePath, 'utf8');
+              const nameMatch = content.match(/^name:\s*(.+)$/m);
+              const descMatch = content.match(/^description:\s*(.+)$/m);
+              if (nameMatch) name = nameMatch[1].trim();
+              if (descMatch) description = descMatch[1].trim();
+            } catch (e) {}
+
+            existingSkills.push({
+              repo: 'Commands (.opencode/commands/)',
+              slug: `command:${file}`,
+              name: `/${name.replace(/^\//, '')}`,
+              description,
+              destPath: filePath,
+              sourceFile: filePath,
+              isCommand: true
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`Error scanning commands in ${targetCommandsDir}:`, err.message);
+      }
+    }
   }
 
+  const hasNoSkills = existingSkills.length === 0;
+
+  const section1Html = `
+    <div class="engineering-skills-section ${hasNoSkills ? 'section-enabled' : 'section-disabled'}" style="margin-bottom: 1.25rem; padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid ${hasNoSkills ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.08)'}; background: ${hasNoSkills ? 'rgba(16, 185, 129, 0.06)' : 'rgba(15, 23, 42, 0.4)'}; transition: all 0.2s ease;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;">
+        <h3 style="font-size: 1.1rem; font-weight: 600; color: ${hasNoSkills ? 'var(--text-primary)' : 'var(--text-muted)'}; display: flex; align-items: center; gap: 0.5rem;">
+          <span>1. Production-grade engineering skills</span>
+        </h3>
+        <button type="button" class="btn btn-primary btn-sm" 
+                hx-post="/api/provision-bundle"
+                hx-include="[name='targetPath'], [name='tool']"
+                hx-target="#console-container"
+                hx-indicator="#provision-indicator"
+                hx-on::after-request="refreshSkills()"
+                ${!hasNoSkills ? 'disabled style="opacity: 0.5; cursor: not-allowed;"' : ''}>
+          <span class="btn-icon">🚀</span> Apply Bundle
+        </button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; margin-bottom: 0.75rem;">
+        This bundle is based on the repository: <a href="https://github.com/addyosmani/agent-skills" target="_blank" style="color: var(--accent); text-decoration: underline;">https://github.com/addyosmani/agent-skills</a>
+      </p>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.8rem; background: rgba(0, 0, 0, 0.2); padding: 0.75rem; border-radius: var(--radius-md); border: 1px solid rgba(255, 255, 255, 0.05);">
+        <div>
+          <strong style="color: var(--text-primary); display: block; margin-bottom: 0.25rem;">📦 Included Skills (7):</strong>
+          <ul style="list-style: none; padding-left: 0; color: var(--text-muted); line-height: 1.4;">
+            <li>• <code>spec-driven-development</code></li>
+            <li>• <code>planning-and-task-breakdown</code></li>
+            <li>• <code>incremental-implementation</code></li>
+            <li>• <code>test-driven-development</code></li>
+            <li>• <code>debugging-and-error-recovery</code></li>
+            <li>• <code>code-review-and-quality</code></li>
+            <li>• <code>shipping-and-launch</code></li>
+          </ul>
+        </div>
+        <div>
+          ${tool === 'antigravity-ide' ? `
+            <strong style="color: var(--text-primary); display: block; margin-bottom: 0.25rem;">⚡ Workflows in <code>.agents/workflows/</code>:</strong>
+            <ul style="list-style: none; padding-left: 0; color: var(--text-muted); line-height: 1.4;">
+              <li>• <code>/spec-task</code> <span style="opacity:0.6;">(spec-task.md)</span></li>
+              <li>• <code>/plan-task</code> <span style="opacity:0.6;">(plan-task.md)</span></li>
+              <li>• <code>/build-task</code> <span style="opacity:0.6;">(build-task.md)</span></li>
+              <li>• <code>/review-task</code> <span style="opacity:0.6;">(review-task.md)</span></li>
+            </ul>
+          ` : `
+            <strong style="color: var(--text-primary); display: block; margin-bottom: 0.25rem;">⚡ Slash Commands in <code>.opencode/commands/</code>:</strong>
+            <ul style="list-style: none; padding-left: 0; color: var(--text-muted); line-height: 1.4;">
+              <li>• <code>/task-spec</code> <span style="opacity:0.6;">(spec.md)</span></li>
+              <li>• <code>/task-plan</code> <span style="opacity:0.6;">(plan.md)</span></li>
+              <li>• <code>/task-build</code> <span style="opacity:0.6;">(build.md)</span></li>
+              <li>• <code>/task-test</code> <span style="opacity:0.6;">(test.md)</span></li>
+              <li>• <code>/task-review</code> <span style="opacity:0.6;">(review.md)</span></li>
+              <li>• <code>/task-ship</code> <span style="opacity:0.6;">(ship.md)</span></li>
+            </ul>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+
   return `
+    ${section1Html}
     <div class="card-header flex-between">
       <div>
         <h2>2. Skills</h2>
@@ -558,7 +700,6 @@ function renderSkillsCardHtml(targetPath, tool) {
         <span class="btn-icon">🚀</span> Apply Selected Skills
       </button>
     </div>
-    ${diffHtml}
   `;
 }
 
@@ -595,20 +736,34 @@ app.delete('/api/skills', (req, res) => {
 
   const resolvedPath = path.isAbsolute(targetPath) ? targetPath : path.resolve(__dirname, targetPath);
 
-  let destFolder = '';
-  if (tool === 'github-copilot') {
-    destFolder = path.join(resolvedPath, '.github', 'skills', slug);
-  } else if (tool === 'antigravity-ide') {
-    destFolder = path.join(resolvedPath, '.agents', 'skills', slug);
-  } else if (tool === 'opencode') {
-    destFolder = path.join(resolvedPath, '.opencode', 'skills', slug);
-  } else {
-    destFolder = path.join(resolvedPath, 'skills', slug);
-  }
-
   try {
-    if (fs.existsSync(destFolder)) {
-      fs.rmSync(destFolder, { recursive: true, force: true });
+    if (slug.startsWith('workflow:')) {
+      const fileName = slug.replace(/^workflow:/, '');
+      const filePath = path.join(resolvedPath, '.agents', 'workflows', fileName);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } else if (slug.startsWith('command:')) {
+      const fileName = slug.replace(/^command:/, '');
+      const filePath = path.join(resolvedPath, '.opencode', 'commands', fileName);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } else {
+      let destFolder = '';
+      if (tool === 'github-copilot') {
+        destFolder = path.join(resolvedPath, '.github', 'skills', slug);
+      } else if (tool === 'antigravity-ide') {
+        destFolder = path.join(resolvedPath, '.agents', 'skills', slug);
+      } else if (tool === 'opencode') {
+        destFolder = path.join(resolvedPath, '.opencode', 'skills', slug);
+      } else {
+        destFolder = path.join(resolvedPath, 'skills', slug);
+      }
+
+      if (fs.existsSync(destFolder)) {
+        fs.rmSync(destFolder, { recursive: true, force: true });
+      }
     }
     res.send(renderSkillsCardHtml(targetPath, tool));
   } catch (err) {
@@ -630,20 +785,34 @@ app.post('/api/skills/delete-batch', (req, res) => {
 
   if (selectedSlugs.length > 0) {
     for (const slug of selectedSlugs) {
-      let destFolder = '';
-      if (tool === 'github-copilot') {
-        destFolder = path.join(resolvedPath, '.github', 'skills', slug);
-      } else if (tool === 'antigravity-ide') {
-        destFolder = path.join(resolvedPath, '.agents', 'skills', slug);
-      } else if (tool === 'opencode') {
-        destFolder = path.join(resolvedPath, '.opencode', 'skills', slug);
-      } else {
-        destFolder = path.join(resolvedPath, 'skills', slug);
-      }
-
       try {
-        if (fs.existsSync(destFolder)) {
-          fs.rmSync(destFolder, { recursive: true, force: true });
+        if (slug.startsWith('workflow:')) {
+          const fileName = slug.replace(/^workflow:/, '');
+          const filePath = path.join(resolvedPath, '.agents', 'workflows', fileName);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } else if (slug.startsWith('command:')) {
+          const fileName = slug.replace(/^command:/, '');
+          const filePath = path.join(resolvedPath, '.opencode', 'commands', fileName);
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+        } else {
+          let destFolder = '';
+          if (tool === 'github-copilot') {
+            destFolder = path.join(resolvedPath, '.github', 'skills', slug);
+          } else if (tool === 'antigravity-ide') {
+            destFolder = path.join(resolvedPath, '.agents', 'skills', slug);
+          } else if (tool === 'opencode') {
+            destFolder = path.join(resolvedPath, '.opencode', 'skills', slug);
+          } else {
+            destFolder = path.join(resolvedPath, 'skills', slug);
+          }
+
+          if (fs.existsSync(destFolder)) {
+            fs.rmSync(destFolder, { recursive: true, force: true });
+          }
         }
       } catch (err) {
         console.error(`Error batch deleting skill ${slug}:`, err.message);
@@ -654,6 +823,73 @@ app.post('/api/skills/delete-batch', (req, res) => {
   res.send(renderSkillsCardHtml(targetPath, tool || 'github-copilot'));
 });
 
+// Get skill content for reviewing / editing
+app.get('/api/skills/editor', (req, res) => {
+  const filePath = getQueryParam(req.query.filePath);
+  const repoFilePath = getQueryParam(req.query.repoFilePath);
+  if (!filePath) {
+    return res.status(400).json({ success: false, message: 'File path is required.' });
+  }
+
+  try {
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ success: false, message: `File not found at path: ${filePath}` });
+    }
+
+    const content = fs.readFileSync(filePath, 'utf8');
+    let repoContent = '';
+    let hasDiff = false;
+    let diffText = '';
+
+    if (repoFilePath && fs.existsSync(repoFilePath) && repoFilePath !== filePath) {
+      repoContent = fs.readFileSync(repoFilePath, 'utf8');
+      const cleanInstalled = content.replace(/\r/g, '');
+      const cleanRepo = repoContent.replace(/\r/g, '');
+      if (cleanInstalled !== cleanRepo) {
+        hasDiff = true;
+        diffText = getDiffText(cleanInstalled, cleanRepo);
+      }
+    }
+
+    return res.json({
+      success: true,
+      filePath,
+      repoFilePath: repoFilePath || '',
+      content,
+      repoContent,
+      hasDiff,
+      diffText
+    });
+  } catch (err) {
+    console.error(`Error reading file for editor:`, err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Save edited skill content
+app.post('/api/skills/editor', (req, res) => {
+  const { filePath, content } = req.body;
+  if (!filePath || content === undefined) {
+    return res.status(400).json({ success: false, message: 'File path and content are required.' });
+  }
+
+  try {
+    const dir = path.dirname(filePath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(filePath, content, 'utf8');
+    return res.json({
+      success: true,
+      message: 'File saved successfully!'
+    });
+  } catch (err) {
+    console.error(`Error saving file in editor:`, err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // Run Sync Repositories (get-updates.sh)
 app.post('/api/sync', (req, res) => {
   res.setHeader('Content-Type', 'text/html');
@@ -661,6 +897,23 @@ app.post('/api/sync', (req, res) => {
     const logs = stdout + stderr;
     const cleanLogs = logs.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''); // strip ansi escape colors if any
     
+    // Read updated sync states to summarize changes found
+    const syncStates = readSyncStates();
+    const sources = readSources();
+    let totalChanges = 0;
+    let details = [];
+    for (const src of sources) {
+      const state = syncStates[src.name];
+      if (state) {
+        details.push(`${src.name}: ${state.changes}`);
+        const match = state.changes.match(/(\d+)/);
+        if (match) {
+          totalChanges += parseInt(match[1], 10);
+        }
+      }
+    }
+    const summaryText = details.length > 0 ? ` (${totalChanges} total changes found across active repositories)` : '';
+
     if (error) {
       res.send(`
         <div class="console-status status-error">
@@ -673,7 +926,7 @@ app.post('/api/sync', (req, res) => {
       res.send(`
         <div class="console-status status-success">
           <span class="status-icon">✅</span>
-          <span class="status-msg">Repositories synchronized successfully!</span>
+          <span class="status-msg">Repositories synchronized successfully!${summaryText}</span>
         </div>
         <pre class="console-body">${cleanLogs}</pre>
       `);
@@ -735,6 +988,48 @@ app.post('/api/provision', (req, res) => {
         <div class="console-status status-success">
           <span class="status-icon">✅</span>
           <span class="status-msg">Skills provisioned successfully!</span>
+        </div>
+        <pre class="console-body">${cleanLogs}</pre>
+      `);
+    }
+  });
+});
+
+// Run Provisioning for Production Engineering Bundle
+app.post('/api/provision-bundle', (req, res) => {
+  const { targetPath, tool } = req.body;
+  
+  if (!targetPath) {
+    return res.send(`
+      <div class="console-status status-error">
+        <span class="status-icon">⚠️</span>
+        <span class="status-msg">Error: Target path is required.</span>
+      </div>
+      <pre class="console-body">Please enter a valid directory path.</pre>
+    `);
+  }
+
+  const selectedTool = tool || 'opencode';
+  const cmd = `bash scripts/createagents.sh "${targetPath.trim()}" --tool "${selectedTool}" --bundle production-engineering`;
+
+  res.setHeader('Content-Type', 'text/html');
+  exec(cmd, (error, stdout, stderr) => {
+    const logs = stdout + stderr;
+    const cleanLogs = logs.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+
+    if (error) {
+      res.send(`
+        <div class="console-status status-error">
+          <span class="status-icon">⚠️</span>
+          <span class="status-msg">Bundle Provisioning failed with exit code ${error.code}</span>
+        </div>
+        <pre class="console-body">${cleanLogs}</pre>
+      `);
+    } else {
+      res.send(`
+        <div class="console-status status-success">
+          <span class="status-icon">✅</span>
+          <span class="status-msg">Production-grade engineering skills & slash commands provisioned successfully!</span>
         </div>
         <pre class="console-body">${cleanLogs}</pre>
       `);

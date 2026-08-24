@@ -7,15 +7,17 @@ set -e
 TARGET_PATH=""
 TOOL_TYPE=""
 SKILLS_ARG=""
+BUNDLE_TYPE=""
 
 # Helper function to print usage
 print_usage() {
-  echo "Usage: $0 [path] --tool <github-copilot|opencode|antigravity-ide> [--skills <indices-or-slugs>]" >&2
+  echo "Usage: $0 [path] --tool <github-copilot|opencode|antigravity-ide> [--skills <indices-or-slugs>] [--bundle production-engineering]" >&2
   echo "" >&2
   echo "Options:" >&2
   echo "  -p, --path PATH      Target project directory" >&2
   echo "  -t, --tool TOOL      Target tool style ('github-copilot', 'opencode', or 'antigravity-ide')" >&2
   echo "  -s, --skills SKILLS  Space/comma separated list of skill numbers, slugs, or repo:slug namespaces" >&2
+  echo "  -b, --bundle BUNDLE  Predefined skills bundle (e.g. 'production-engineering')" >&2
   echo "  -h, --help           Show this help message" >&2
 }
 
@@ -28,6 +30,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     -t|--tool)
       TOOL_TYPE="$2"
+      shift 2
+      ;;
+    -b|--bundle)
+      BUNDLE_TYPE="$2"
       shift 2
       ;;
     -s|--skills)
@@ -82,6 +88,13 @@ fi
 if [[ "$TOOL_TYPE" != "github-copilot" && "$TOOL_TYPE" != "opencode" && "$TOOL_TYPE" != "antigravity-ide" ]]; then
   echo "Error: Invalid tool type '$TOOL_TYPE'. Must be 'github-copilot', 'opencode', or 'antigravity-ide'." >&2
   exit 1
+fi
+
+if [[ "$BUNDLE_TYPE" == "production-engineering" ]]; then
+  echo "=== Applying Production-Grade Engineering Skills Bundle ===" >&2
+  if [ -z "$SKILLS_ARG" ]; then
+    SKILLS_ARG="spec-driven-development planning-and-task-breakdown incremental-implementation test-driven-development debugging-and-error-recovery code-review-and-quality shipping-and-launch"
+  fi
 fi
 
 # Get the directory of this script (scripts/) and navigate to the project root
@@ -454,3 +467,20 @@ EOF
   
   echo "=== Successfully provisioned workflows to '$WORKFLOWS_DIR'! ===" >&2
 fi
+
+if [[ "$TOOL_TYPE" == "opencode" ]]; then
+  COMMANDS_SRC="$PROJECT_ROOT/repos/agent-skills/.claude/commands"
+  COMMANDS_DEST="$TARGET_PATH/.opencode/commands"
+  if [ -d "$COMMANDS_SRC" ]; then
+    echo "=== Provisioning Slash Commands to Target Path: $COMMANDS_DEST ===" >&2
+    mkdir -p "$COMMANDS_DEST"
+    
+    cp "$COMMANDS_SRC/spec.md" "$COMMANDS_DEST/task-spec.md" 2>/dev/null && echo "Provisioned Command: spec.md -> '$COMMANDS_DEST/task-spec.md'" >&2 || true
+    cp "$COMMANDS_SRC/plan.md" "$COMMANDS_DEST/task-plan.md" 2>/dev/null && echo "Provisioned Command: plan.md -> '$COMMANDS_DEST/task-plan.md'" >&2 || true
+    cp "$COMMANDS_SRC/build.md" "$COMMANDS_DEST/task-build.md" 2>/dev/null && echo "Provisioned Command: build.md -> '$COMMANDS_DEST/task-build.md'" >&2 || true
+    cp "$COMMANDS_SRC/test.md" "$COMMANDS_DEST/task-test.md" 2>/dev/null && echo "Provisioned Command: test.md -> '$COMMANDS_DEST/task-test.md'" >&2 || true
+    cp "$COMMANDS_SRC/review.md" "$COMMANDS_DEST/task-review.md" 2>/dev/null && echo "Provisioned Command: review.md -> '$COMMANDS_DEST/task-review.md'" >&2 || true
+    cp "$COMMANDS_SRC/ship.md" "$COMMANDS_DEST/task-ship.md" 2>/dev/null && echo "Provisioned Command: ship.md -> '$COMMANDS_DEST/task-ship.md'" >&2 || true
+  fi
+fi
+

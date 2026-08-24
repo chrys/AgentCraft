@@ -26,7 +26,7 @@
                 hx-post="/api/sync" 
                 hx-target="#console-container" 
                 hx-indicator="#sync-indicator"
-                hx-on::after-request="refreshSkills()">
+                hx-on::after-request="refreshSkills(); htmx.ajax('GET', '/api/sources', {target: '#sources-list-body'});">
           <span class="btn-icon">🔄</span> Sync Repositories
         </button>
         <span id="sync-indicator" class="htmx-indicator loader"></span>
@@ -62,7 +62,7 @@
                   <th>Repository URL</th>
                   <th>Branch</th>
                   <th>Skills Folder</th>
-                  <th>Last Synced</th>
+                  <th>Comments</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -194,9 +194,6 @@
             </div>
           </div>
 
-          <!-- Skill Differences Card -->
-          <div id="diff-card-container" style="display: none;"></div>
-
           <!-- Bottom Section: Execution Console -->
           <div class="card glass console-card full-width-console">
             <div class="card-header">
@@ -220,7 +217,246 @@
     </main>
   </div>
 
+  <!-- Skill Editor Modal -->
+  <div id="skill-editor-modal" class="modal-overlay" style="display: none;" onclick="if(event.target === this) closeSkillEditor();">
+    <div class="modal-card glass">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <span class="modal-icon">📝</span>
+          <div>
+            <h2 id="modal-skill-title">Review & Edit Skill</h2>
+            <p id="modal-skill-path" class="modal-filepath"><code>/path/to/SKILL.md</code></p>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <span id="modal-save-indicator" class="save-status-msg" style="display: none;"></span>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-save-skill" onclick="saveSkillContent()">
+            <span class="btn-icon">💾</span> Save Changes
+          </button>
+          <button type="button" class="btn btn-outline btn-sm btn-modal-close" onclick="closeSkillEditor()" title="Close (Esc)">
+            ✕
+          </button>
+        </div>
+      </div>
+      
+      <div class="modal-body" id="modal-body-container">
+        <!-- Split View Layout (When upstream diff exists) -->
+        <div id="modal-split-layout" class="modal-split-layout" style="display: none;">
+          <!-- Left side: Updated repository version with diffs -->
+          <div class="split-pane split-pane-left">
+            <div class="split-pane-header">
+              <div class="split-pane-title">
+                <span class="pane-badge badge-upstream">Repository Updates</span>
+                <span class="pane-subtitle">Diff against repository version</span>
+              </div>
+              <button type="button" class="btn btn-secondary btn-xs" onclick="copyUpstreamToEditor()" title="Copy entire upstream content into current editor">
+                📥 Copy Upstream to Editor
+              </button>
+            </div>
+            <div class="split-pane-content diff-code-panel" id="modal-diff-view">
+              <!-- Diff lines inserted dynamically -->
+            </div>
+          </div>
+
+          <!-- Right side: Current version editable -->
+          <div class="split-pane split-pane-right">
+            <div class="split-pane-header">
+              <div class="split-pane-title">
+                <span class="pane-badge badge-local">Current Version (Editable)</span>
+                <span class="pane-subtitle">Make changes and save directly</span>
+              </div>
+            </div>
+            <div class="split-pane-content editor-pane-content">
+              <textarea id="modal-skill-editor-split" class="code-editor-textarea" spellcheck="false" placeholder="Loading skill content..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <!-- Single Editor Layout (when no repository diff) -->
+        <div id="modal-single-layout" class="modal-single-layout">
+          <textarea id="modal-skill-editor" class="code-editor-textarea" spellcheck="false" placeholder="Loading skill content..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <span class="modal-tip">💡 <b>Tip:</b> Review upstream differences on the left and edit current version on the right. Press <b>Ctrl+S</b> (or <b>Cmd+S</b>) to save.</span>
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary btn-sm" onclick="closeSkillEditor()">Close</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveSkillContent()">
+            <span class="btn-icon">💾</span> Save
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
+    // Skill Editor Modal Logic
+    let currentEditingPath = '';
+    let latestRepoContent = '';
+
+    function getActiveTextarea() {
+      const splitLayout = document.getElementById('modal-split-layout');
+      if (splitLayout && splitLayout.style.display !== 'none') {
+        return document.getElementById('modal-skill-editor-split');
+      }
+      return document.getElementById('modal-skill-editor');
+    }
+
+    function copyUpstreamToEditor() {
+      if (!latestRepoContent) return;
+      const splitEditor = document.getElementById('modal-skill-editor-split');
+      if (splitEditor) {
+        splitEditor.value = latestRepoContent;
+        splitEditor.focus();
+      }
+    }
+
+    async function openSkillEditor(encodedPath, encodedName, encodedRepoPath, e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      const filePath = decodeURIComponent(encodedPath || '');
+      const skillName = decodeURIComponent(encodedName || '');
+      const repoFilePath = decodeURIComponent(encodedRepoPath || '');
+      if (!filePath) {
+        alert('No file path found for this skill.');
+        return;
+      }
+
+      currentEditingPath = filePath;
+      latestRepoContent = '';
+
+      const modal = document.getElementById('skill-editor-modal');
+      const titleEl = document.getElementById('modal-skill-title');
+      const pathEl = document.getElementById('modal-skill-path');
+      const singleLayout = document.getElementById('modal-single-layout');
+      const splitLayout = document.getElementById('modal-split-layout');
+      const diffView = document.getElementById('modal-diff-view');
+      const singleEditor = document.getElementById('modal-skill-editor');
+      const splitEditor = document.getElementById('modal-skill-editor-split');
+      const indicatorEl = document.getElementById('modal-save-indicator');
+
+      titleEl.textContent = `Review & Edit: ${skillName}`;
+      pathEl.innerHTML = `<code>${filePath}</code>`;
+      indicatorEl.style.display = 'none';
+
+      singleEditor.value = 'Loading skill content...';
+      splitEditor.value = 'Loading skill content...';
+      singleEditor.disabled = true;
+      splitEditor.disabled = true;
+      diffView.innerHTML = '<div class="text-center py-4 text-muted">Loading differences...</div>';
+      modal.style.display = 'flex';
+
+      try {
+        const url = `/api/skills/editor?filePath=${encodeURIComponent(filePath)}&repoFilePath=${encodeURIComponent(repoFilePath)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.success) {
+          latestRepoContent = data.repoContent || '';
+          if (data.hasDiff && data.diffText) {
+            // Show split layout
+            singleLayout.style.display = 'none';
+            splitLayout.style.display = 'grid';
+            splitEditor.value = data.content;
+            splitEditor.disabled = false;
+
+            const escapedLines = data.diffText
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .split('\n')
+              .map(line => {
+                let cls = 'diff-line';
+                if (line.startsWith('+')) cls += ' diff-addition';
+                else if (line.startsWith('-')) cls += ' diff-deletion';
+                else if (line.startsWith('@@')) cls += ' diff-header';
+                return `<span class="${cls}">${line || ' '}</span>`;
+              })
+              .join('\n');
+
+            diffView.innerHTML = `<pre class="diff-code-block"><code>${escapedLines}</code></pre>`;
+            splitEditor.focus();
+          } else {
+            // Show single layout
+            splitLayout.style.display = 'none';
+            singleLayout.style.display = 'flex';
+            singleEditor.value = data.content;
+            singleEditor.disabled = false;
+            singleEditor.focus();
+          }
+        } else {
+          singleLayout.style.display = 'flex';
+          splitLayout.style.display = 'none';
+          singleEditor.value = `Error loading file: ${data.message || 'File not found'}`;
+        }
+      } catch (err) {
+        singleLayout.style.display = 'flex';
+        splitLayout.style.display = 'none';
+        singleEditor.value = `Network error loading file: ${err.message}`;
+      }
+    }
+
+    function closeSkillEditor() {
+      const modal = document.getElementById('skill-editor-modal');
+      modal.style.display = 'none';
+      currentEditingPath = '';
+      latestRepoContent = '';
+    }
+
+    async function saveSkillContent() {
+      if (!currentEditingPath) return;
+      const textareaEl = getActiveTextarea();
+      const indicatorEl = document.getElementById('modal-save-indicator');
+      const saveButtons = document.querySelectorAll('#btn-save-skill, .modal-footer .btn-primary');
+      const content = textareaEl.value;
+
+      saveButtons.forEach(b => b.disabled = true);
+      indicatorEl.style.display = 'inline-block';
+      indicatorEl.className = 'save-status-msg status-saving';
+      indicatorEl.textContent = 'Saving...';
+
+      try {
+        const res = await fetch('/api/skills/editor', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filePath: currentEditingPath, content })
+        });
+        const data = await res.json();
+        if (data.success) {
+          indicatorEl.className = 'save-status-msg status-saved';
+          indicatorEl.textContent = '✅ Saved successfully!';
+          setTimeout(() => {
+            indicatorEl.style.display = 'none';
+          }, 3000);
+          refreshSkills();
+        } else {
+          indicatorEl.className = 'save-status-msg status-err';
+          indicatorEl.textContent = `⚠️ Error: ${data.message || 'Failed to save'}`;
+        }
+      } catch (err) {
+        indicatorEl.className = 'save-status-msg status-err';
+        indicatorEl.textContent = `⚠️ Error: ${err.message}`;
+      } finally {
+        saveButtons.forEach(b => b.disabled = false);
+      }
+    }
+
+    // Keyboard shortcuts for editor modal
+    window.addEventListener('keydown', (e) => {
+      const modal = document.getElementById('skill-editor-modal');
+      if (modal && modal.style.display !== 'none') {
+        if (e.key === 'Escape') {
+          closeSkillEditor();
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+          e.preventDefault();
+          saveSkillContent();
+        }
+      }
+    });
+
     // Tab switching logic
     function switchTab(tabId) {
       document.querySelectorAll('.tab-panel').forEach(panel => {
